@@ -1,4 +1,4 @@
-# Competition Project
+# data analysis (sex-specific)
 If you prefer conda, create a conda env and `pip install -r requirements.txt` there.
 
 ```
@@ -20,5 +20,6 @@ Quick start (PowerShell)
 Structure
 
 Scaffold for data cleaning and analysis (pandas-based).
+
 
 
