@@ -11,7 +11,8 @@ from pathlib import Path
 import io
 import sys
 from scipy import stats as scipy_stats
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 # Add project root to path for imports
 project_root = Path(__file__).parent
@@ -61,50 +62,112 @@ def sem(series: pd.Series) -> float:
     return values.std(ddof=1) / np.sqrt(n)
 
 
+def autosize_columns(ws, min_width: int = 10, max_width: int = 42) -> None:
+    """Autosize worksheet columns based on rendered cell text length."""
+    for col_cells in ws.columns:
+        max_len = 0
+        col_idx = col_cells[0].column
+        for cell in col_cells:
+            value = "" if cell.value is None else str(cell.value)
+            if len(value) > max_len:
+                max_len = len(value)
+        ws.column_dimensions[get_column_letter(col_idx)].width = min(max(max_len + 2, min_width), max_width)
+
+
 def build_excel_export(df_processed: pd.DataFrame) -> bytes:
-    """Build formatted Excel output with sex-separated layout and t-test results."""
+    """Build formatted Excel output with sex-separated sections and statistics."""
     excel_buffer = io.BytesIO()
 
     with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+        # 1) Quick navigation sheet
+        nav_df = pd.DataFrame(
+            {
+                'Section': ['Processed_Data', 'Sex_Split_Analysis', 'Publication_Stats'],
+                'Description': [
+                    'Full cleaned dataset',
+                    'Male section + Female section (4-column gap), Average row, SEM row, then t-tests',
+                    'Compact report-ready table with means, SEM, Welch t-test and p<0.005 flag',
+                ],
+            }
+        )
+        nav_df.to_excel(writer, index=False, sheet_name='README', startrow=2)
+        readme_ws = writer.sheets['README']
+        readme_ws.cell(row=1, column=1, value='Worksheet Guide').font = Font(bold=True, size=13)
+        readme_ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=2)
+        readme_ws['A1'].alignment = Alignment(horizontal='left')
+        readme_ws.freeze_panes = 'A4'
+        autosize_columns(readme_ws)
+
+        # 2) Full processed data
         df_processed.to_excel(writer, index=False, sheet_name='Processed_Data')
+        processed_ws = writer.sheets['Processed_Data']
+        processed_ws.freeze_panes = 'A2'
+        autosize_columns(processed_ws)
 
         if 'Sex' in df_processed.columns:
             male_df = df_processed[df_processed['Sex'] == 'Male'].reset_index(drop=True)
             female_df = df_processed[df_processed['Sex'] == 'Female'].reset_index(drop=True)
 
+            analysis_sheet = 'Sex_Split_Analysis'
             gap_cols = 4
             total_cols = len(df_processed.columns)
             female_start_col = total_cols + gap_cols + 1  # 1-based column index
 
-            male_df.to_excel(writer, index=False, sheet_name='Sex_Classified', startrow=1, startcol=0)
+            # 3) Sex-split sheet with clear, navigable layout
+            male_df.to_excel(writer, index=False, sheet_name=analysis_sheet, startrow=3, startcol=0)
             female_df.to_excel(
                 writer,
                 index=False,
-                sheet_name='Sex_Classified',
-                startrow=1,
+                sheet_name=analysis_sheet,
+                startrow=3,
                 startcol=female_start_col - 1
             )
 
-            ws = writer.sheets['Sex_Classified']
+            ws = writer.sheets[analysis_sheet]
             header_font = Font(bold=True)
+            section_font = Font(bold=True, size=12)
             highlight_fill = PatternFill(start_color='FFF59D', end_color='FFF59D', fill_type='solid')
+            section_fill = PatternFill(start_color='DDEBF7', end_color='DDEBF7', fill_type='solid')
+            table_header_fill = PatternFill(start_color='E2F0D9', end_color='E2F0D9', fill_type='solid')
+            thin_border = Border(
+                left=Side(style='thin', color='D9D9D9'),
+                right=Side(style='thin', color='D9D9D9'),
+                top=Side(style='thin', color='D9D9D9'),
+                bottom=Side(style='thin', color='D9D9D9'),
+            )
 
-            ws.cell(row=1, column=1, value='Male Animals').font = header_font
-            ws.cell(row=1, column=female_start_col, value='Female Animals').font = header_font
+            ws.cell(row=1, column=1, value='Sex-Split Processed Data and Statistics').font = Font(bold=True, size=13)
+            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=female_start_col + total_cols)
+
+            ws.cell(row=3, column=1, value='Male Section').font = section_font
+            ws.cell(row=3, column=1).fill = section_fill
+            ws.cell(row=3, column=female_start_col, value='Female Section').font = section_font
+            ws.cell(row=3, column=female_start_col).fill = section_fill
+
+            # Style the table headers written by pandas (row 4)
+            for c in range(1, total_cols + 1):
+                ws.cell(row=4, column=c).font = header_font
+                ws.cell(row=4, column=c).fill = table_header_fill
+                ws.cell(row=4, column=c).border = thin_border
+            for c in range(female_start_col, female_start_col + total_cols):
+                ws.cell(row=4, column=c).font = header_font
+                ws.cell(row=4, column=c).fill = table_header_fill
+                ws.cell(row=4, column=c).border = thin_border
 
             numeric_cols = df_processed.select_dtypes(include=['number']).columns.tolist()
             max_data_len = max(len(male_df), len(female_df))
 
-            avg_row = max_data_len + 5
+            # Data starts at row 5 (because headers are on row 4).
+            avg_row = max_data_len + 6
             sem_row = avg_row + 1
-            ttest_title_row = sem_row + 3
+            ttest_title_row = sem_row + 2
             ttest_header_row = ttest_title_row + 1
             ttest_data_start = ttest_header_row + 1
 
-            ws.cell(row=avg_row, column=1, value='Average (N)').font = header_font
-            ws.cell(row=sem_row, column=1, value='SEM = stdev(N)/sqrt(N)').font = header_font
-            ws.cell(row=avg_row, column=female_start_col, value='Average (N)').font = header_font
-            ws.cell(row=sem_row, column=female_start_col, value='SEM = stdev(N)/sqrt(N)').font = header_font
+            ws.cell(row=avg_row, column=1, value='Average').font = header_font
+            ws.cell(row=sem_row, column=1, value='SEM = stdev/sqrt').font = header_font
+            ws.cell(row=avg_row, column=female_start_col, value='Average').font = header_font
+            ws.cell(row=sem_row, column=female_start_col, value='SEM = stdev/sqrt').font = header_font
 
             for col_name in numeric_cols:
                 col_idx = df_processed.columns.get_loc(col_name) + 1
@@ -116,15 +179,12 @@ def build_excel_export(df_processed: pd.DataFrame) -> bytes:
                 male_mean = male_vals.mean() if len(male_vals) > 0 else np.nan
                 female_mean = female_vals.mean() if len(female_vals) > 0 else np.nan
 
-                if len(male_vals) > 0:
-                    ws.cell(row=avg_row, column=col_idx, value=f"{male_mean:.4f} (N={len(male_vals)})")
-                else:
-                    ws.cell(row=avg_row, column=col_idx, value='N=0')
-
-                if len(female_vals) > 0:
-                    ws.cell(row=avg_row, column=female_col_idx, value=f"{female_mean:.4f} (N={len(female_vals)})")
-                else:
-                    ws.cell(row=avg_row, column=female_col_idx, value='N=0')
+                ws.cell(row=avg_row, column=col_idx, value=round(float(male_mean), 6) if not pd.isna(male_mean) else np.nan)
+                ws.cell(
+                    row=avg_row,
+                    column=female_col_idx,
+                    value=round(float(female_mean), 6) if not pd.isna(female_mean) else np.nan
+                )
 
                 male_sem = sem(male_vals)
                 female_sem = sem(female_vals)
@@ -132,35 +192,72 @@ def build_excel_export(df_processed: pd.DataFrame) -> bytes:
                 ws.cell(
                     row=sem_row,
                     column=col_idx,
-                    value=round(float(male_sem), 6) if not pd.isna(male_sem) else 'N<2'
+                    value=round(float(male_sem), 6) if not pd.isna(male_sem) else np.nan
                 )
                 ws.cell(
                     row=sem_row,
                     column=female_col_idx,
-                    value=round(float(female_sem), 6) if not pd.isna(female_sem) else 'N<2'
+                    value=round(float(female_sem), 6) if not pd.isna(female_sem) else np.nan
                 )
 
-            ws.cell(row=ttest_title_row, column=1, value='Welch t-test Results').font = header_font
+            for row in [avg_row, sem_row]:
+                for c in range(1, total_cols + 1):
+                    ws.cell(row=row, column=c).border = thin_border
+                for c in range(female_start_col, female_start_col + total_cols):
+                    ws.cell(row=row, column=c).border = thin_border
 
-            ttest_headers = ['Variable', 'Male N', 'Female N', 't-stat', 'p-value', 'p<0.005']
+            ws.cell(row=ttest_title_row, column=1, value='Welch t-test Results (below summary rows)').font = Font(
+                bold=True,
+                size=12,
+            )
+
+            ttest_headers = [
+                'Variable', 'Male N', 'Female N', 'Male Mean', 'Female Mean', 'Male SEM', 'Female SEM',
+                't-stat', 'p-value', 'p<0.005'
+            ]
             for i, col_title in enumerate(ttest_headers, start=1):
-                ws.cell(row=ttest_header_row, column=i, value=col_title).font = header_font
+                header_cell = ws.cell(row=ttest_header_row, column=i, value=col_title)
+                header_cell.font = header_font
+                header_cell.fill = table_header_fill
+                header_cell.border = thin_border
 
             for i, col_name in enumerate(numeric_cols):
                 row = ttest_data_start + i
                 t_stat, p_value, n_male, n_female = ttest_for_groups(df_processed, col_name)
                 is_highlight = not pd.isna(p_value) and p_value < 0.005
 
+                male_vals = male_df[col_name].dropna()
+                female_vals = female_df[col_name].dropna()
+                male_mean = male_vals.mean() if len(male_vals) > 0 else np.nan
+                female_mean = female_vals.mean() if len(female_vals) > 0 else np.nan
+                male_sem = sem(male_vals)
+                female_sem = sem(female_vals)
+
                 ws.cell(row=row, column=1, value=col_name)
                 ws.cell(row=row, column=2, value=n_male)
                 ws.cell(row=row, column=3, value=n_female)
-                ws.cell(row=row, column=4, value=round(float(t_stat), 6) if not pd.isna(t_stat) else np.nan)
-                ws.cell(row=row, column=5, value=round(float(p_value), 6) if not pd.isna(p_value) else np.nan)
-                ws.cell(row=row, column=6, value='YES' if is_highlight else 'NO')
+                ws.cell(row=row, column=4, value=round(float(male_mean), 6) if not pd.isna(male_mean) else np.nan)
+                ws.cell(row=row, column=5, value=round(float(female_mean), 6) if not pd.isna(female_mean) else np.nan)
+                ws.cell(row=row, column=6, value=round(float(male_sem), 6) if not pd.isna(male_sem) else np.nan)
+                ws.cell(row=row, column=7, value=round(float(female_sem), 6) if not pd.isna(female_sem) else np.nan)
+                ws.cell(row=row, column=8, value=round(float(t_stat), 6) if not pd.isna(t_stat) else np.nan)
+                ws.cell(row=row, column=9, value=round(float(p_value), 6) if not pd.isna(p_value) else np.nan)
+                ws.cell(row=row, column=10, value='YES' if is_highlight else 'NO')
+
+                for col_num in range(1, len(ttest_headers) + 1):
+                    ws.cell(row=row, column=col_num).border = thin_border
 
                 if is_highlight:
-                    for col_num in range(1, 7):
+                    for col_num in range(1, len(ttest_headers) + 1):
                         ws.cell(row=row, column=col_num).fill = highlight_fill
+
+            ws.auto_filter.ref = (
+                f"A{ttest_header_row}:{get_column_letter(len(ttest_headers))}{ttest_data_start + len(numeric_cols) - 1}"
+                if len(numeric_cols) > 0
+                else f"A{ttest_header_row}:{get_column_letter(len(ttest_headers))}{ttest_header_row}"
+            )
+            ws.freeze_panes = 'A5'
+            autosize_columns(ws)
 
             # Publication-style summary table for reporting
             publication_rows = []
@@ -195,21 +292,38 @@ def build_excel_export(df_processed: pd.DataFrame) -> bytes:
                 pub_header_font = Font(bold=True)
                 for col_num in range(1, len(publication_df.columns) + 1):
                     pub_ws.cell(row=1, column=col_num).font = pub_header_font
+                    pub_ws.cell(row=1, column=col_num).fill = table_header_fill
+                    pub_ws.cell(row=1, column=col_num).border = thin_border
 
                 p_col = publication_df.columns.get_loc('p-value') + 1
                 flag_col = publication_df.columns.get_loc('p<0.005') + 1
                 for row_num in range(2, len(publication_df) + 2):
                     p_cell = pub_ws.cell(row=row_num, column=p_col)
+                    for col_num in range(1, len(publication_df.columns) + 1):
+                        pub_ws.cell(row=row_num, column=col_num).border = thin_border
                     if isinstance(p_cell.value, (int, float, np.floating)) and p_cell.value < 0.005:
                         for col_num in range(1, len(publication_df.columns) + 1):
                             pub_ws.cell(row=row_num, column=col_num).fill = highlight_fill
                         pub_ws.cell(row=row_num, column=flag_col, value='YES')
+                pub_ws.freeze_panes = 'A2'
+                pub_ws.auto_filter.ref = f"A1:{get_column_letter(len(publication_df.columns))}{len(publication_df) + 1}"
+                autosize_columns(pub_ws)
             else:
                 pd.DataFrame({'Info': ['No numeric columns available for publication stats.']}).to_excel(
                     writer,
                     index=False,
                     sheet_name='Publication_Stats'
                 )
+                autosize_columns(writer.sheets['Publication_Stats'])
+        else:
+            pd.DataFrame(
+                {'Info': ["Sex column not found. Run processing with sex classification to build split sections."]}
+            ).to_excel(writer, index=False, sheet_name='Sex_Split_Analysis')
+            autosize_columns(writer.sheets['Sex_Split_Analysis'])
+            pd.DataFrame(
+                {'Info': ["Sex column not found. Publication statistics require male/female groups."]}
+            ).to_excel(writer, index=False, sheet_name='Publication_Stats')
+            autosize_columns(writer.sheets['Publication_Stats'])
 
     return excel_buffer.getvalue()
 
