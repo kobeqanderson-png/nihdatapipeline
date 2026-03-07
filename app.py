@@ -19,16 +19,37 @@ from src.features import add_log_feature
 # --- Page Config ---
 st.set_page_config(page_title="Sex Differences Pipeline", page_icon="🧬", layout="wide")
 
+
 # --- Custom Styling ---
 st.markdown("""
     <style>
-    .main { background-color: #f9f9f9; }
-    .stMetric { background-color: #ffffff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #eee; }
-    div.stButton > button:first-child { background-color: #007bff; color: white; border-radius: 8px; }
-    .reportview-container .main .block-container { padding-top: 2rem; }
+    .main { 
+        background-color: #f9f9f9; 
+    }
+    /* Style the Metric Cards */
+    [data-testid="stMetric"] {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        border: 1px solid #eee;
+    }
+    /* Force all text inside metrics to be black for visibility */
+    [data-testid="stMetricLabel"] > div {
+        color: #000000 !important;
+        font-weight: bold !important;
+    }
+    [data-testid="stMetricValue"] > div {
+        color: #000000 !important;
+    }
+    /* Style the primary button */
+    div.stButton > button:first-child {
+        background-color: #007bff;
+        color: white;
+        border-radius: 8px;
+    }
     </style>
     """, unsafe_allow_html=True)
-
 # --- Sidebar ---
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/2103/2103633.png", width=80)
@@ -118,3 +139,4 @@ if st.session_state.get('df_processed') is not None:
     st.download_button("📥 Download Processed Results", 
                        df_proc.to_csv(index=False).encode('utf-8'), 
                        "processed_data.csv", "text/csv")
+
