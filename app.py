@@ -175,15 +175,43 @@ if st.session_state.df_raw is not None:
     st.header("3️⃣ Process Data")
 
     # Animal column selection for sex classification
-    possible_animal_cols = [col for col in df_raw.columns if 'animal' in col.lower()]
-    all_cols = df_raw.columns.tolist()
+    st.divider()
+st.header("3️⃣ Process Data")
 
-    animal_col = st.selectbox(
-        "Select Animal # column (for sex classification)",
-        options=possible_animal_cols if possible_animal_cols else all_cols,
-        index=0 if possible_animal_cols else None,
-        help="Animal # ≤ threshold = Male, > threshold = Female"
+# Dynamic Column Selection
+all_cols = df_raw.columns.tolist()
+
+col_a, col_b = st.columns(2)
+with col_a:
+    # This allows you to pick ANY column from your uploaded file
+    sex_col = st.selectbox(
+        "Select Column for Sex Classification", 
+        options=all_cols,
+        help="Select the column containing the numeric values used to determine sex."
     )
+
+with col_b:
+    # Users can set the threshold for the specific column chosen above
+    threshold = st.number_input(
+        f"Threshold for {sex_col}", 
+        value=16, 
+        step=1
+    )
+
+if st.button("🚀 Run Processing Pipeline", type="primary", use_container_width=True):
+    with st.spinner("Processing data..."):
+        try:
+            # Apply basic cleaning
+            df_processed = basic_clean(df_raw)
+            
+            # Apply sex classification using YOUR chosen column and threshold
+            df_processed['Sex'] = df_processed[sex_col].apply(
+                lambda x: 'Male' if pd.notna(x) and x <= threshold else 'Female'
+            )
+            
+            # Save to session state
+            st.session_state.df_processed = df_processed
+            st.success("✅ Processing complete!")
 
     if st.button("🚀 Run Processing Pipeline", type="primary", use_container_width=True):
         with st.spinner("Processing data..."):
@@ -522,6 +550,7 @@ st.markdown("""
 **Data Processing Pipeline** | Built with Streamlit  
 To run from command line: `streamlit run app.py`
 """)
+
 
 
 
