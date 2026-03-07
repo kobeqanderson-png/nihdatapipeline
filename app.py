@@ -11,7 +11,7 @@ from pathlib import Path
 import io
 import sys
 from scipy import stats as scipy_stats
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.styles import Font, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
 # Add project root to path for imports
@@ -74,36 +74,11 @@ def autosize_columns(ws, min_width: int = 10, max_width: int = 42) -> None:
         ws.column_dimensions[get_column_letter(col_idx)].width = min(max(max_len + 2, min_width), max_width)
 
 
-def build_excel_export(df_processed: pd.DataFrame) -> bytes:
-    """Build formatted Excel output with sex-separated sections and statistics."""
+def build_excel_export(df_processed: pd.DataFrame, include_publication_stats: bool = False) -> bytes:
+    """Build formatted Excel output with sex-separated sections and optional publication stats."""
     excel_buffer = io.BytesIO()
 
     with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-        # 1) Quick navigation sheet
-        nav_df = pd.DataFrame(
-            {
-                'Section': ['Processed_Data', 'Sex_Split_Analysis', 'Publication_Stats'],
-                'Description': [
-                    'Full cleaned dataset',
-                    'Male section + Female section (4-column gap), Average row, SEM row, then t-tests',
-                    'Compact report-ready table with means, SEM, Welch t-test and p<0.005 flag',
-                ],
-            }
-        )
-        nav_df.to_excel(writer, index=False, sheet_name='README', startrow=2)
-        readme_ws = writer.sheets['README']
-        readme_ws.cell(row=1, column=1, value='Worksheet Guide').font = Font(bold=True, size=13)
-        readme_ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=2)
-        readme_ws['A1'].alignment = Alignment(horizontal='left')
-        readme_ws.freeze_panes = 'A4'
-        autosize_columns(readme_ws)
-
-        # 2) Full processed data
-        df_processed.to_excel(writer, index=False, sheet_name='Processed_Data')
-        processed_ws = writer.sheets['Processed_Data']
-        processed_ws.freeze_panes = 'A2'
-        autosize_columns(processed_ws)
-
         if 'Sex' in df_processed.columns:
             male_df = df_processed[df_processed['Sex'] == 'Male'].reset_index(drop=True)
             female_df = df_processed[df_processed['Sex'] == 'Female'].reset_index(drop=True)
@@ -259,71 +234,73 @@ def build_excel_export(df_processed: pd.DataFrame) -> bytes:
             ws.freeze_panes = 'A5'
             autosize_columns(ws)
 
-            # Publication-style summary table for reporting
-            publication_rows = []
-            for col_name in numeric_cols:
-                male_vals = male_df[col_name].dropna()
-                female_vals = female_df[col_name].dropna()
-                t_stat, p_value, n_male, n_female = ttest_for_groups(df_processed, col_name)
+            if include_publication_stats:
+                # Publication-style summary table for reporting
+                publication_rows = []
+                for col_name in numeric_cols:
+                    male_vals = male_df[col_name].dropna()
+                    female_vals = female_df[col_name].dropna()
+                    t_stat, p_value, n_male, n_female = ttest_for_groups(df_processed, col_name)
 
-                male_mean = male_vals.mean() if len(male_vals) > 0 else np.nan
-                female_mean = female_vals.mean() if len(female_vals) > 0 else np.nan
-                male_sem = sem(male_vals)
-                female_sem = sem(female_vals)
+                    male_mean = male_vals.mean() if len(male_vals) > 0 else np.nan
+                    female_mean = female_vals.mean() if len(female_vals) > 0 else np.nan
+                    male_sem = sem(male_vals)
+                    female_sem = sem(female_vals)
 
-                publication_rows.append({
-                    'Variable': col_name,
-                    'Male Mean': round(float(male_mean), 6) if not pd.isna(male_mean) else np.nan,
-                    'Male SEM': round(float(male_sem), 6) if not pd.isna(male_sem) else np.nan,
-                    'Male N': int(n_male),
-                    'Female Mean': round(float(female_mean), 6) if not pd.isna(female_mean) else np.nan,
-                    'Female SEM': round(float(female_sem), 6) if not pd.isna(female_sem) else np.nan,
-                    'Female N': int(n_female),
-                    't-stat (Welch)': round(float(t_stat), 6) if not pd.isna(t_stat) else np.nan,
-                    'p-value': round(float(p_value), 6) if not pd.isna(p_value) else np.nan,
-                    'p<0.005': 'YES' if (not pd.isna(p_value) and p_value < 0.005) else 'NO'
-                })
+                    publication_rows.append({
+                        'Variable': col_name,
+                        'Male Mean': round(float(male_mean), 6) if not pd.isna(male_mean) else np.nan,
+                        'Male SEM': round(float(male_sem), 6) if not pd.isna(male_sem) else np.nan,
+                        'Male N': int(n_male),
+                        'Female Mean': round(float(female_mean), 6) if not pd.isna(female_mean) else np.nan,
+                        'Female SEM': round(float(female_sem), 6) if not pd.isna(female_sem) else np.nan,
+                        'Female N': int(n_female),
+                        't-stat (Welch)': round(float(t_stat), 6) if not pd.isna(t_stat) else np.nan,
+                        'p-value': round(float(p_value), 6) if not pd.isna(p_value) else np.nan,
+                        'p<0.005': 'YES' if (not pd.isna(p_value) and p_value < 0.005) else 'NO'
+                    })
 
-            publication_df = pd.DataFrame(publication_rows)
-            if not publication_df.empty:
-                publication_df.to_excel(writer, index=False, sheet_name='Publication_Stats')
+                publication_df = pd.DataFrame(publication_rows)
+                if not publication_df.empty:
+                    publication_df.to_excel(writer, index=False, sheet_name='Publication_Stats')
 
-                pub_ws = writer.sheets['Publication_Stats']
-                pub_header_font = Font(bold=True)
-                for col_num in range(1, len(publication_df.columns) + 1):
-                    pub_ws.cell(row=1, column=col_num).font = pub_header_font
-                    pub_ws.cell(row=1, column=col_num).fill = table_header_fill
-                    pub_ws.cell(row=1, column=col_num).border = thin_border
-
-                p_col = publication_df.columns.get_loc('p-value') + 1
-                flag_col = publication_df.columns.get_loc('p<0.005') + 1
-                for row_num in range(2, len(publication_df) + 2):
-                    p_cell = pub_ws.cell(row=row_num, column=p_col)
+                    pub_ws = writer.sheets['Publication_Stats']
+                    pub_header_font = Font(bold=True)
                     for col_num in range(1, len(publication_df.columns) + 1):
-                        pub_ws.cell(row=row_num, column=col_num).border = thin_border
-                    if isinstance(p_cell.value, (int, float, np.floating)) and p_cell.value < 0.005:
+                        pub_ws.cell(row=1, column=col_num).font = pub_header_font
+                        pub_ws.cell(row=1, column=col_num).fill = table_header_fill
+                        pub_ws.cell(row=1, column=col_num).border = thin_border
+
+                    p_col = publication_df.columns.get_loc('p-value') + 1
+                    flag_col = publication_df.columns.get_loc('p<0.005') + 1
+                    for row_num in range(2, len(publication_df) + 2):
+                        p_cell = pub_ws.cell(row=row_num, column=p_col)
                         for col_num in range(1, len(publication_df.columns) + 1):
-                            pub_ws.cell(row=row_num, column=col_num).fill = highlight_fill
-                        pub_ws.cell(row=row_num, column=flag_col, value='YES')
-                pub_ws.freeze_panes = 'A2'
-                pub_ws.auto_filter.ref = f"A1:{get_column_letter(len(publication_df.columns))}{len(publication_df) + 1}"
-                autosize_columns(pub_ws)
-            else:
-                pd.DataFrame({'Info': ['No numeric columns available for publication stats.']}).to_excel(
-                    writer,
-                    index=False,
-                    sheet_name='Publication_Stats'
-                )
-                autosize_columns(writer.sheets['Publication_Stats'])
+                            pub_ws.cell(row=row_num, column=col_num).border = thin_border
+                        if isinstance(p_cell.value, (int, float, np.floating)) and p_cell.value < 0.005:
+                            for col_num in range(1, len(publication_df.columns) + 1):
+                                pub_ws.cell(row=row_num, column=col_num).fill = highlight_fill
+                            pub_ws.cell(row=row_num, column=flag_col, value='YES')
+                    pub_ws.freeze_panes = 'A2'
+                    pub_ws.auto_filter.ref = f"A1:{get_column_letter(len(publication_df.columns))}{len(publication_df) + 1}"
+                    autosize_columns(pub_ws)
+                else:
+                    pd.DataFrame({'Info': ['No numeric columns available for publication stats.']}).to_excel(
+                        writer,
+                        index=False,
+                        sheet_name='Publication_Stats'
+                    )
+                    autosize_columns(writer.sheets['Publication_Stats'])
         else:
             pd.DataFrame(
                 {'Info': ["Sex column not found. Run processing with sex classification to build split sections."]}
             ).to_excel(writer, index=False, sheet_name='Sex_Split_Analysis')
             autosize_columns(writer.sheets['Sex_Split_Analysis'])
-            pd.DataFrame(
-                {'Info': ["Sex column not found. Publication statistics require male/female groups."]}
-            ).to_excel(writer, index=False, sheet_name='Publication_Stats')
-            autosize_columns(writer.sheets['Publication_Stats'])
+            if include_publication_stats:
+                pd.DataFrame(
+                    {'Info': ["Sex column not found. Publication statistics require male/female groups."]}
+                ).to_excel(writer, index=False, sheet_name='Publication_Stats')
+                autosize_columns(writer.sheets['Publication_Stats'])
 
     return excel_buffer.getvalue()
 
@@ -386,6 +363,14 @@ with st.sidebar:
     # Feature engineering options
     st.subheader("Feature Engineering")
     add_log_features = st.checkbox("Add log-transformed features", value=True)
+
+    st.divider()
+    st.subheader("Excel Export")
+    include_publication_stats = st.checkbox(
+        "Include publication stats sheet",
+        value=False,
+        help="Adds a second sheet with compact Mean/SEM/N and Welch t-test results."
+    )
 
 # File upload section
 st.header("1️⃣ Upload Your Data")
@@ -910,7 +895,10 @@ if st.session_state.df_processed is not None:
 
     with col2:
         # Excel download
-        excel_data = build_excel_export(df_processed)
+        excel_data = build_excel_export(
+            df_processed,
+            include_publication_stats=include_publication_stats
+        )
 
         if uploaded_file:
             excel_filename = Path(uploaded_file.name).stem + "_processed.xlsx"
