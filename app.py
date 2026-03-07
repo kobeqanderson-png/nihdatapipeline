@@ -103,29 +103,20 @@ if uploaded_file is not None:
     # Load the file
     try:
         file_extension = Path(uploaded_file.name).suffix.lower()
-# NEW WORKING CODE
-if file_extension == '.csv':
-    df_raw = read_csv(uploaded_file)
         
+        if file_extension == '.csv':
+            # This calls your custom function in src/data_load.py
+            df_raw = read_csv(uploaded_file)
         elif file_extension in ['.xlsx', '.xls']:
-            # For Excel, check available sheets
             xl = pd.ExcelFile(uploaded_file)
             available_sheets = xl.sheet_names
-
             st.info(f"📋 Available sheets: {', '.join(available_sheets)}")
-
-            # Let user select sheet from dropdown
-            selected_sheet = st.selectbox(
-                "Select sheet to load",
-                available_sheets,
-                index=0
-            )
-
+            selected_sheet = st.selectbox("Select sheet to load", available_sheets, index=0)
             df_raw = pd.read_excel(uploaded_file, sheet_name=selected_sheet)
-
+        
         st.session_state.df_raw = df_raw
         st.success(f"✅ Loaded **{uploaded_file.name}** - {len(df_raw):,} rows × {len(df_raw.columns)} columns")
-
+        
     except Exception as e:
         st.error(f"❌ Error loading file: {e}")
         st.stop()
@@ -531,5 +522,6 @@ st.markdown("""
 **Data Processing Pipeline** | Built with Streamlit  
 To run from command line: `streamlit run app.py`
 """)
+
 
 
