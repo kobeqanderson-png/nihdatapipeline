@@ -204,67 +204,37 @@ if st.button("🚀 Run Processing Pipeline", type="primary", use_container_width
             # Apply basic cleaning
             df_processed = basic_clean(df_raw)
             
-            # Apply sex classification using YOUR chosen column and threshold
-            df_processed['Sex'] = df_processed[sex_col].apply(
-                lambda x: 'Male' if pd.notna(x) and x <= threshold else 'Female'
-            )
-            
-            # Save to session state
-            st.session_state.df_processed = df_processed
-            st.success("✅ Processing complete!")
-
+   # Processing section
     if st.button("🚀 Run Processing Pipeline", type="primary", use_container_width=True):
         with st.spinner("Processing data..."):
             try:
-                # Apply basic cleaning
+                # 1. Apply basic cleaning
                 df_processed = basic_clean(df_raw)
-
-                # Add Sex column based on Animal # threshold
-                if animal_col and animal_col in df_processed.columns:
-                    df_processed['Sex'] = df_processed[animal_col].apply(
-                        lambda x: 'Male' if pd.notna(x) and x <= sex_threshold else 'Female'
-                    )
-                    male_count = (df_processed['Sex'] == 'Male').sum()
-                    female_count = (df_processed['Sex'] == 'Female').sum()
-                    st.info(f"🔬 Sex classification: {male_count} Males (≤{sex_threshold}), {female_count} Females (>{sex_threshold})")
-
-                # Add log features if enabled
+                
+                # 2. Apply sex classification using YOUR chosen column and threshold
+                # This uses 'sex_col' and 'threshold' defined right above this button
+                df_processed['Sex'] = df_processed[sex_col].apply(
+                    lambda x: 'Male' if pd.notna(x) and x <= threshold else 'Female'
+                )
+                
+                # 3. Add log features if enabled in sidebar
                 if add_log_features:
                     numeric_cols = df_processed.select_dtypes(include=['number']).columns
                     if len(numeric_cols) > 0:
-                        # Add log feature for first numeric column
-                        first_num_col = numeric_cols[0]
-                        df_processed = add_log_feature(df_processed, col=first_num_col)
-                        st.info(f"Added log feature for: {first_num_col}")
-
+                        df_processed = add_log_feature(df_processed, col=numeric_cols[0])
+                
+                # 4. Save results to session state
                 st.session_state.df_processed = df_processed
-
-                # Show results
-                st.success(f"✅ Processing complete!")
-
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Original Rows", f"{len(df_raw):,}")
-                with col2:
-                    st.metric("Processed Rows", f"{len(df_processed):,}")
-                with col3:
-                    rows_removed = len(df_raw) - len(df_processed)
-                    st.metric("Rows Removed", f"{rows_removed:,}")
-
+                
+                # Show Success Metrics
+                st.success("✅ Processing complete!")
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Original Rows", len(df_raw))
+                m2.metric("Processed Rows", len(df_processed))
+                m3.metric("Males Identified", (df_processed['Sex'] == 'Male').sum())
+                
             except Exception as e:
-                st.error(f"❌ Error during processing: {e}")
-
-# Processed data section
-if st.session_state.df_processed is not None:
-    df_processed = st.session_state.df_processed
-
-    st.divider()
-    st.header("4️⃣ Processed Data")
-
-    # Preview processed data
-    st.subheader("Preview")
-    st.dataframe(df_processed.head(10), use_container_width=True)
-
+                st.error(f"❌ Error during processing: {e}")        
     # Columns list
     with st.expander("📋 All Columns"):
         for i, col in enumerate(df_processed.columns, 1):
@@ -550,6 +520,7 @@ st.markdown("""
 **Data Processing Pipeline** | Built with Streamlit  
 To run from command line: `streamlit run app.py`
 """)
+
 
 
 
