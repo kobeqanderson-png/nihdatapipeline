@@ -163,12 +163,24 @@ from src.data_load import read_csv, read_excel
 from src.cleaning import basic_clean, save_clean
 from src.features import add_log_feature
 from src.visualize import boxplot_by_category, countplot
+from src.branding import apply_subtle_branding, brand_label
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
+
+
+def render_branded_figure(fig) -> None:
+    """Render figure after applying subtle attribution mark."""
+    apply_subtle_branding(
+        fig,
+        enabled=st.session_state.get("branding_enabled", False),
+        text_alpha=0.02,
+        logo_alpha=0.03,
+    )
+    st.pyplot(fig)
 
 def standardize_research_data(df, source_type):
     mappings = {
@@ -350,6 +362,7 @@ def build_excel_export(
     animal_col: str = None,
     threshold: float = 16,
     rebuild_sex_labels: bool = True,
+    include_branding: bool = False,
 ) -> bytes:
     """Build one digestible Excel sheet with animal-ordered data and a summary stats table."""
     excel_buffer = io.BytesIO()
@@ -404,6 +417,13 @@ def build_excel_export(
 
         ordered_df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=2)
         ws = writer.sheets[sheet_name]
+
+        if include_branding:
+            try:
+                ws.oddFooter.right.text = brand_label()
+                ws.oddFooter.right.size = 8
+            except Exception:
+                pass
 
         ws.cell(row=1, column=1, value='Summary Ordered by Animal Number').font = Font(bold=True, size=13)
         ws.cell(row=3, column=1, value='Animal-Ordered Processed Data').font = section_font
@@ -546,6 +566,15 @@ with st.sidebar:
     # Feature engineering options
     st.subheader("Feature Engineering")
     add_log_features = st.checkbox("Add log-transformed features", value=True)
+
+    st.divider()
+
+    st.subheader("Attribution (Optional)")
+    st.session_state.branding_enabled = st.checkbox(
+        "Include subtle attribution watermark",
+        value=False,
+        help="Off by default. Turn on only when you want provenance marks in graphs and Excel exports.",
+    )
 
 # File upload section
 st.header("1. Upload Your Data")
@@ -801,7 +830,7 @@ if st.session_state.df_processed is not None:
         axes[1].tick_params(axis='x', rotation=0)
 
         plt.tight_layout()
-        st.pyplot(fig)
+        render_branded_figure(fig)
         plt.close()
 
         st.divider()
@@ -826,7 +855,7 @@ if st.session_state.df_processed is not None:
                 ax.set_xlabel('Sex')
                 ax.set_ylabel(selected_var)
                 plt.suptitle('')  # Remove automatic title
-                st.pyplot(fig)
+                render_branded_figure(fig)
                 plt.close()
 
             with viz_col2:
@@ -844,7 +873,7 @@ if st.session_state.df_processed is not None:
                 ax.set_title(f'{selected_var} Distribution by Sex')
                 ax.set_xlabel('Sex')
                 ax.set_ylabel(selected_var)
-                st.pyplot(fig)
+                render_branded_figure(fig)
                 plt.close()
 
             # Histogram overlay by sex
@@ -860,7 +889,7 @@ if st.session_state.df_processed is not None:
             ax.set_xlabel(selected_var)
             ax.set_ylabel('Frequency')
             ax.legend()
-            st.pyplot(fig)
+            render_branded_figure(fig)
             plt.close()
 
             # Summary statistics by sex
@@ -931,7 +960,7 @@ if st.session_state.df_processed is not None:
                 ax.legend()
 
                 plt.tight_layout()
-                st.pyplot(fig)
+                render_branded_figure(fig)
                 plt.close()
 
                 # Combined bar + scatter (mean with individual points)
@@ -971,7 +1000,7 @@ if st.session_state.df_processed is not None:
                 ax.set_title(f'{combo_var}: Mean Bar with Sample Scatter')
                 ax.set_xlabel('Sex')
                 ax.set_ylabel(combo_var)
-                st.pyplot(fig)
+                render_branded_figure(fig)
                 plt.close()
 
                 # Density distribution (KDE)
@@ -1000,7 +1029,7 @@ if st.session_state.df_processed is not None:
                         f"Not enough values to estimate density for {density_var}. "
                         "Need at least 2 non-missing values per group."
                     )
-                st.pyplot(fig)
+                render_branded_figure(fig)
                 plt.close()
 
                 # Scatter plot
@@ -1027,7 +1056,7 @@ if st.session_state.df_processed is not None:
                 ax.set_xlabel(x_var)
                 ax.set_ylabel(y_var)
                 ax.legend(title='Sex')
-                st.pyplot(fig)
+                render_branded_figure(fig)
                 plt.close()
 
                 # Summary table
@@ -1116,7 +1145,7 @@ if st.session_state.df_processed is not None:
             ax.set_title(f'Distribution of {hist_col}')
             ax.set_xlabel(hist_col)
             ax.set_ylabel('Frequency')
-            st.pyplot(fig)
+            render_branded_figure(fig)
             plt.close()
 
     with viz_col2:
@@ -1127,7 +1156,7 @@ if st.session_state.df_processed is not None:
             fig, ax = plt.subplots(figsize=(8, 4))
             df_processed.boxplot(column=box_col, ax=ax)
             ax.set_title(f'Box Plot of {box_col}')
-            st.pyplot(fig)
+            render_branded_figure(fig)
             plt.close()
 
     # Correlation heatmap
@@ -1143,7 +1172,7 @@ if st.session_state.df_processed is not None:
         sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0, fmt='.2f', ax=ax)
         ax.set_title('Correlation Matrix')
         plt.tight_layout()
-        st.pyplot(fig)
+        render_branded_figure(fig)
         plt.close()
     else:
         st.warning("Not enough numeric columns for correlation analysis")
@@ -1250,7 +1279,7 @@ if st.session_state.df_processed is not None:
                             ax.set_xlabel("Absolute Coefficient Value")
                             ax.set_title("Feature Importance (|Coefficient|)")
                             ax.invert_yaxis()
-                            st.pyplot(fig)
+                            render_branded_figure(fig)
                             plt.close()
 
                         with col_coef2:
@@ -1263,7 +1292,7 @@ if st.session_state.df_processed is not None:
                             ax.set_xlabel("Actual")
                             ax.set_ylabel("Predicted")
                             ax.set_title("Predicted vs Actual")
-                            st.pyplot(fig)
+                            render_branded_figure(fig)
                             plt.close()
 
                         st.subheader("Residual Analysis")
@@ -1276,7 +1305,7 @@ if st.session_state.df_processed is not None:
                             ax.set_xlabel("Predicted Values")
                             ax.set_ylabel("Residuals")
                             ax.set_title("Residual Plot")
-                            st.pyplot(fig)
+                            render_branded_figure(fig)
                             plt.close()
 
                         with res_col2:
@@ -1285,7 +1314,7 @@ if st.session_state.df_processed is not None:
                             ax.set_xlabel("Residuals")
                             ax.set_ylabel("Frequency")
                             ax.set_title("Residual Distribution")
-                            st.pyplot(fig)
+                            render_branded_figure(fig)
                             plt.close()
 
                     except ValueError as exc:
@@ -1323,6 +1352,7 @@ if st.session_state.df_processed is not None:
             animal_col=st.session_state.get('sex_col_used'),
             threshold=st.session_state.get('sex_threshold_used', 16),
             rebuild_sex_labels=st.session_state.get('sex_rebuild_from_threshold', True),
+            include_branding=st.session_state.get('branding_enabled', False),
         )
 
         if uploaded_file:
