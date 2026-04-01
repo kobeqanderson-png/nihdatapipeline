@@ -166,6 +166,9 @@ from src.visualize import boxplot_by_category, countplot
 
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.model_selection import train_test_split
 
 def standardize_research_data(df, source_type):
     mappings = {
@@ -200,6 +203,21 @@ def ttest_for_groups(df: pd.DataFrame, value_col: str, group_col: str = "Sex"):
         t_stat, p_value = scipy_stats.ttest_ind(male_data, female_data, equal_var=False)
         return t_stat, p_value, len(male_data), len(female_data)
     return np.nan, np.nan, len(male_data), len(female_data)
+
+
+def effect_size_cohens_d(group1: pd.Series, group2: pd.Series) -> float:
+    """Calculate Cohen's d effect size between two groups."""
+    n1, n2 = len(group1), len(group2)
+    var1, var2 = group1.var(ddof=1), group2.var(ddof=1)
+    
+    if n1 < 2 or n2 < 2:
+        return np.nan
+    
+    pooled_std = np.sqrt(((n1 - 1) * var1 + (n2 - 1) * var2) / (n1 + n2 - 2))
+    if pooled_std == 0:
+        return np.nan
+    
+    return (group1.mean() - group2.mean()) / pooled_std
 
 
 def pvalue_to_label(p_value: float) -> str:
@@ -1048,6 +1066,38 @@ if st.session_state.df_processed is not None:
                 }).round(4)
                 st.dataframe(comparison_df, use_container_width=True)
 
+        st.subheader("Effect Size Analysis")
+        if selected_vars and len(selected_vars) > 0:
+            effect_col1, effect_col2 = st.columns(2)
+            
+            with effect_col1:
+                effect_var = st.selectbox("Select variable for effect size", selected_vars, key="effect_size")
+            
+            with effect_col2:
+                st.write("")
+                st.write("")
+                if st.button("Calculate Cohen's d", use_container_width=True):
+                    male_data = df_processed[df_processed['Sex'] == 'Male'][effect_var].dropna()
+                    female_data = df_processed[df_processed['Sex'] == 'Female'][effect_var].dropna()
+                    
+                    if len(male_data) > 1 and len(female_data) > 1:
+                        cohens_d = effect_size_cohens_d(male_data, female_data)
+                        if not pd.isna(cohens_d):
+                            st.metric("Cohen's d", f"{cohens_d:.4f}")
+                            if abs(cohens_d) < 0.2:
+                                effect_label = "Negligible"
+                            elif abs(cohens_d) < 0.5:
+                                effect_label = "Small"
+                            elif abs(cohens_d) < 0.8:
+                                effect_label = "Medium"
+                            else:
+                                effect_label = "Large"
+                            st.info(f"Effect Size: {effect_label}")
+                        else:
+                            st.warning("Cannot calculate Cohen's d with this data")
+                    else:
+                        st.warning("Insufficient data for effect size calculation")
+
     else:
         st.warning("No 'Sex' column found. Please run the processing pipeline first with an Animal # column selected.")
 
@@ -1098,9 +1148,152 @@ if st.session_state.df_processed is not None:
     else:
         st.warning("Not enough numeric columns for correlation analysis")
 
+    st.divider()
+    st.header("7. Linear Regression Modeling")
+
+    if len(numeric_cols) < 2:
+        st.warning("Linear regression requires at least two numeric columns.")
+    else:
+        reg_col1, reg_col2 = st.columns(2)
+
+        with reg_col1:
+            target_col = st.selectbox(
+                "Target variable",
+                numeric_cols,
+                key="reg_target",
+            )
+
+        with reg_col2:
+            feature_candidates = [c for c in numeric_cols if c != target_col]
+            default_features = feature_candidates[: min(3, len(feature_candidates))]
+            feature_cols = st.multiselect(
+                "Feature variables",
+                feature_candidates,
+                default=default_features,
+                key="reg_features",
+            )
+
+        model_col1, model_col2, model_col3 = st.columns(3)
+        with model_col1:
+            test_size = st.slider("Test split", min_value=0.1, max_value=0.4, value=0.2, step=0.05)
+        with model_col2:
+            random_state = st.number_input("Random state", min_value=0, value=42, step=1)
+        with model_col3:
+            fit_intercept = st.checkbox("Fit intercept", value=True)
+
+        poly_col1, poly_col2 = st.columns(2)
+        with poly_col1:
+            use_poly = st.checkbox("Add polynomial features", value=False, key="use_poly_features")
+        with poly_col2:
+            poly_degree = st.slider("Polynomial degree", 2, 4, 2, disabled=not use_poly) if use_poly else 2
+
+        if st.button("Run Linear Regression", use_container_width=True):
+            if not feature_cols:
+                st.warning("Select at least one feature variable.")
+            else:
+                model_df = df_processed[[target_col] + feature_cols].dropna()
+
+                if len(model_df) < 10:
+                    st.warning("Not enough complete rows for a stable train/test regression split. Need at least 10 rows.")
+                else:
+                    X = model_df[feature_cols].copy()
+                    y = model_df[target_col]
+
+                    if use_poly:
+                        for col in feature_cols:
+                            for d in range(2, poly_degree + 1):
+                                X[f"{col}_pow{d}"] = np.power(X[col], d)
+
+                    try:
+                        X_train, X_test, y_train, y_test = train_test_split(
+                            X,
+                            y,
+                            test_size=test_size,
+                            random_state=int(random_state),
+                        )
+
+                        model = LinearRegression(fit_intercept=fit_intercept)
+                        model.fit(X_train, y_train)
+                        y_pred_train = model.predict(X_train)
+                        y_pred_test = model.predict(X_test)
+
+                        mae = mean_absolute_error(y_test, y_pred_test)
+                        rmse = np.sqrt(mean_squared_error(y_test, y_pred_test))
+                        r2 = r2_score(y_test, y_pred_test)
+                        train_r2 = r2_score(y_train, y_pred_train)
+
+                        st.subheader("Model Performance")
+                        metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+                        with metric_col1:
+                            st.metric("R-squared (Test)", f"{r2:.4f}")
+                        with metric_col2:
+                            st.metric("R-squared (Train)", f"{train_r2:.4f}")
+                        with metric_col3:
+                            st.metric("MAE", f"{mae:.4f}")
+                        with metric_col4:
+                            st.metric("RMSE", f"{rmse:.4f}")
+
+                        coef_df = pd.DataFrame({
+                            "Feature": X.columns,
+                            "Coefficient": model.coef_,
+                        }).sort_values("Coefficient", key=np.abs, ascending=False)
+
+                        st.subheader("Model Coefficients")
+                        st.dataframe(coef_df, use_container_width=True)
+
+                        col_coef1, col_coef2 = st.columns(2)
+                        with col_coef1:
+                            st.subheader("Coefficient Importance")
+                            fig, ax = plt.subplots(figsize=(8, 6))
+                            colors = [color for color in ["#22c55e" if x >= 0 else "#ef4444" for x in coef_df["Coefficient"]]]
+                            ax.barh(coef_df["Feature"], np.abs(coef_df["Coefficient"]), color=colors, edgecolor="black")
+                            ax.set_xlabel("Absolute Coefficient Value")
+                            ax.set_title("Feature Importance (|Coefficient|)")
+                            ax.invert_yaxis()
+                            st.pyplot(fig)
+                            plt.close()
+
+                        with col_coef2:
+                            st.subheader("Predicted vs Actual")
+                            fig, ax = plt.subplots(figsize=(8, 6))
+                            ax.scatter(y_test, y_pred_test, alpha=0.7, edgecolor="black")
+                            y_min = min(float(np.min(y_test)), float(np.min(y_pred_test)))
+                            y_max = max(float(np.max(y_test)), float(np.max(y_pred_test)))
+                            ax.plot([y_min, y_max], [y_min, y_max], linestyle="--", color="gray")
+                            ax.set_xlabel("Actual")
+                            ax.set_ylabel("Predicted")
+                            ax.set_title("Predicted vs Actual")
+                            st.pyplot(fig)
+                            plt.close()
+
+                        st.subheader("Residual Analysis")
+                        residuals = y_test - y_pred_test
+                        res_col1, res_col2 = st.columns(2)
+                        with res_col1:
+                            fig, ax = plt.subplots(figsize=(8, 6))
+                            ax.scatter(y_pred_test, residuals, alpha=0.7, edgecolor="black")
+                            ax.axhline(y=0, linestyle="--", color="gray")
+                            ax.set_xlabel("Predicted Values")
+                            ax.set_ylabel("Residuals")
+                            ax.set_title("Residual Plot")
+                            st.pyplot(fig)
+                            plt.close()
+
+                        with res_col2:
+                            fig, ax = plt.subplots(figsize=(8, 6))
+                            ax.hist(residuals, bins=15, edgecolor="black", alpha=0.7, color="#22c55e")
+                            ax.set_xlabel("Residuals")
+                            ax.set_ylabel("Frequency")
+                            ax.set_title("Residual Distribution")
+                            st.pyplot(fig)
+                            plt.close()
+
+                    except ValueError as exc:
+                        st.error(f"Linear regression failed: {exc}")
+
     # Download section
     st.divider()
-    st.header("7. Download Processed Data")
+    st.header("8. Download Processed Data")
 
     col1, col2 = st.columns(2)
 
