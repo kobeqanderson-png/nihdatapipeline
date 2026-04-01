@@ -15,6 +15,145 @@ from scipy import stats as scipy_stats
 from openpyxl.styles import Font, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
+st.set_page_config(
+    page_title="NIH SABV Compliant Pipeline",
+    page_icon="📊",
+    layout="wide"
+)
+
+
+def apply_custom_theme() -> None:
+    """Apply a dark, monospace-first visual style across Streamlit widgets."""
+    st.markdown(
+        """
+        <style>
+        :root {
+            --bg-main: #0d1117;
+            --bg-panel: #161b22;
+            --bg-soft: #21262d;
+            --text-main: #d1d5db;
+            --text-muted: #9aa4b2;
+            --accent: #22c55e;
+            --accent-soft: #15803d;
+            --accent-deep: #166534;
+            --border: #30363d;
+        }
+
+        html, body, [class*="css"] {
+            font-family: "IBM Plex Mono", "JetBrains Mono", "Fira Code", monospace !important;
+            background: radial-gradient(circle at top right, #1f2937 0%, var(--bg-main) 45%) !important;
+            color: var(--text-main) !important;
+        }
+
+        .stApp {
+            background: radial-gradient(circle at top right, #1f2937 0%, var(--bg-main) 45%) !important;
+            color: var(--text-main) !important;
+        }
+
+        section[data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #111827 0%, #0f172a 100%) !important;
+            border-right: 1px solid var(--border);
+        }
+
+        .stMarkdown, .stText, .stCaption, label, p, h1, h2, h3, h4 {
+            color: var(--text-main) !important;
+        }
+
+        h1, h2, h3 {
+            letter-spacing: 0.02em;
+            text-shadow: 0 0 0.5px rgba(34, 197, 94, 0.45);
+        }
+
+        a {
+            color: var(--accent) !important;
+        }
+
+        .stButton > button,
+        .stDownloadButton > button {
+            background: var(--accent-soft) !important;
+            color: #e6fffa !important;
+            border: 1px solid var(--accent) !important;
+            border-radius: 8px;
+            box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.25) inset;
+        }
+
+        .stButton > button:hover,
+        .stDownloadButton > button:hover {
+            background: var(--accent) !important;
+            color: #0d1117 !important;
+            border-color: #86efac !important;
+        }
+
+        .stButton > button:focus,
+        .stDownloadButton > button:focus,
+        .stButton > button:focus-visible,
+        .stDownloadButton > button:focus-visible {
+            outline: 2px solid #86efac !important;
+            outline-offset: 2px !important;
+            box-shadow: none !important;
+        }
+
+        div[data-baseweb="select"] > div,
+        .stTextInput > div > div,
+        .stNumberInput > div > div,
+        .stTextArea > div > div,
+        .stDateInput > div > div {
+            background-color: var(--bg-soft) !important;
+            border: 1px solid var(--border) !important;
+            color: var(--text-main) !important;
+        }
+
+        div[data-baseweb="select"] > div:focus-within,
+        .stTextInput > div > div:focus-within,
+        .stNumberInput > div > div:focus-within,
+        .stTextArea > div > div:focus-within,
+        .stDateInput > div > div:focus-within {
+            border-color: var(--accent) !important;
+            box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.35) !important;
+        }
+
+        div[data-baseweb="slider"] [role="slider"] {
+            background-color: var(--accent) !important;
+        }
+
+        div[data-baseweb="slider"] > div > div {
+            background-color: rgba(34, 197, 94, 0.25) !important;
+        }
+
+        .stCheckbox input:checked + div,
+        .stRadio input:checked + div {
+            background-color: var(--accent) !important;
+            border-color: var(--accent) !important;
+        }
+
+        button[role="tab"][aria-selected="true"] {
+            color: #dcfce7 !important;
+            border-bottom: 2px solid var(--accent) !important;
+        }
+
+        .stDataFrame, [data-testid="stTable"] {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .stAlert {
+            background: var(--bg-panel) !important;
+            border: 1px solid var(--accent-deep) !important;
+        }
+
+        hr {
+            border-color: var(--border) !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+apply_custom_theme()
+
+   
 # Add project root to path for imports
 project_root = Path(__file__).parent
 if str(project_root) not in sys.path:
@@ -28,6 +167,22 @@ from src.visualize import boxplot_by_category, countplot
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+def standardize_research_data(df, source_type):
+    mappings = {
+        "EthoVision XT": {"Recording time": "time", "X center": "x", "Y center": "y", "Velocity": "velocity"},
+        "Any-Maze": {"Time": "time", "Centre position X": "x", "Centre position Y": "y", "Speed": "velocity"},
+        "Standardized CSV": {} 
+    }
+    
+    if source_type in mappings:
+        df = df.rename(columns=mappings[source_type])
+    
+    if 'sex' not in df.columns:
+        for col in ['Sex', 'Gender', 'SABV_Group']:
+            if col in df.columns:
+                df = df.rename(columns={col: 'sex'})
+    
+    return df
 
 def safe_percent_diff(male_mean: float, female_mean: float) -> float:
     """Return percent difference relative to female mean; NaN if denominator is zero."""
@@ -274,15 +429,8 @@ def build_excel_export(df_processed: pd.DataFrame, animal_col: str = None, thres
 
     return excel_buffer.getvalue()
 
-# Page configuration
-st.set_page_config(
-    page_title="Sex Differences Analysis Pipeline",
-    page_icon="📊",
-    layout="wide"
-)
-
 # Title and description
-st.title("📊 Sex Differences Analysis Pipeline")
+st.title(" NIH SABV Compliant Pipeline")
 st.markdown("""
 Upload CSV or Excel files to analyze sex differences in your data.
 
