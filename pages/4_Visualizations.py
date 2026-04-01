@@ -19,8 +19,12 @@ try:
 except ModuleNotFoundError:
     def apply_subtle_branding(*args, **kwargs):
         return None
+from src.navigation import apply_global_chrome, render_top_navigation
 
 st.set_page_config(page_title="Visualizations", page_icon=None, layout="wide")
+
+apply_global_chrome()
+render_top_navigation("Visualize")
 
 st.title("General Visualizations")
 

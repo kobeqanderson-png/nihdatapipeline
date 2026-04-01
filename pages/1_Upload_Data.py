@@ -19,11 +19,14 @@ from src.animations import (
     animated_info_message,
     animated_warning_message,
 )
+from src.navigation import apply_global_chrome, render_top_navigation
 
 st.set_page_config(page_title="Upload Data", page_icon=None, layout="wide")
 
 # Inject animations
 inject_animation_css()
+apply_global_chrome()
+render_top_navigation("Upload")
 
 animated_header("Upload Your Data", "Start by uploading a CSV or Excel file to begin analysis")
 uploaded_file = st.file_uploader(

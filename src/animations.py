@@ -263,23 +263,39 @@ def animated_warning_message(message: str, icon: str = "⚠️") -> None:
     st.markdown(html, unsafe_allow_html=True)
 
 
-def animated_progress_steps(current_step: int, total_steps: int, steps: list) -> None:
+def animated_progress_steps(
+    current_step: int,
+    total_steps: int,
+    steps: list,
+    display_from_step: int = 1,
+    show_leading_connector: bool = False,
+) -> None:
     """Display animated progress through steps."""
     html = "<div style='margin: 20px 0;'>"
+
+    display_from_step = max(1, int(display_from_step))
+    display_from_index = min(display_from_step - 1, len(steps))
+
+    if show_leading_connector and display_from_step > 1:
+        previous_step = display_from_step - 1
+        leading_color = "rgba(255, 133, 123, 0.5)" if previous_step < current_step else "rgba(140, 150, 173, 0.2)"
+        html += f"""
+        <div style="height: 16px; width: 2px; background: {leading_color}; margin-left: 15px; margin-bottom: 8px;"></div>
+        """
     
-    for i, step_name in enumerate(steps):
+    for i, step_name in enumerate(steps[display_from_index:], start=display_from_index):
         step_num = i + 1
         if step_num < current_step:
             status = "✓"
-            color = "#22c55e"
+            color = "#ff857b"
             opacity = "1"
         elif step_num == current_step:
             status = "●"
-            color = "#22c55e"
+            color = "#ff857b"
             opacity = "1"
         else:
             status = str(step_num)
-            color = "#9aa4b2"
+            color = "#8c96ad"
             opacity = "0.5"
         
         html += f"""
@@ -288,7 +304,7 @@ def animated_progress_steps(current_step: int, total_steps: int, steps: list) ->
                 width: 32px; 
                 height: 32px; 
                 border-radius: 50%; 
-                background: rgba(34, 197, 94, 0.1); 
+                background: rgba(255, 106, 95, 0.12); 
                 border: 2px solid {color};
                 display: flex; 
                 align-items: center; 
@@ -303,7 +319,7 @@ def animated_progress_steps(current_step: int, total_steps: int, steps: list) ->
         
         if i < len(steps) - 1:
             html += f"""
-            <div style="height: 16px; width: 2px; background: rgba(34, 197, 94, {0.3 if step_num < current_step else 0.1}); margin-left: 15px; margin-bottom: 8px;"></div>
+            <div style="height: 16px; width: 2px; background: {'rgba(255, 133, 123, 0.5)' if step_num < current_step else 'rgba(140, 150, 173, 0.2)'}; margin-left: 15px; margin-bottom: 8px;"></div>
             """
     
     html += "</div>"

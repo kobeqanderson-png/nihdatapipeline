@@ -21,8 +21,12 @@ try:
 except ModuleNotFoundError:
     def brand_label(default: str = "kobeanderson-png") -> str:
         return default
+from src.navigation import apply_global_chrome, render_top_navigation
 
 st.set_page_config(page_title="Download", page_icon=None, layout="wide")
+
+apply_global_chrome()
+render_top_navigation("Download")
 
 st.title("Download Processed Data")
 
