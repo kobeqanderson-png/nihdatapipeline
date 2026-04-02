@@ -343,6 +343,9 @@ if 'branding_enabled' not in st.session_state:
 st.markdown(
     """
     <section class="section-band">
+        <p style="margin-bottom: 0.7rem; color: #c8d1e6; font-size: 0.95rem;">
+            <strong>NIH</strong> = National Institue of Health • <strong>SABV</strong> = Sex as a Biological Variable
+        </p>
         <div class="hero-shell">
             <span class="hero-tag">Research Workflow Platform</span>
             <h1 class="hero-title">NIH SABV Compliant Data Pipeline</h1>
