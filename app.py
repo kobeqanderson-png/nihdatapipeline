@@ -211,6 +211,25 @@ st.markdown(
         line-height: 1.55;
     }
 
+    .coffee-btn {
+        display: inline-block;
+        margin-top: 0.75rem;
+        padding: 0.48rem 0.95rem;
+        border: 1px solid rgba(255, 133, 123, 0.55);
+        color: #ffd9d5 !important;
+        background: rgba(255, 133, 123, 0.08);
+        text-decoration: none !important;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+        transition: all 0.25s ease;
+    }
+
+    .coffee-btn:hover {
+        border-color: #ffb0a9;
+        background: rgba(255, 133, 123, 0.2);
+        transform: translateY(-1px);
+    }
+
     a {
         color: var(--accent) !important;
     }
@@ -436,6 +455,9 @@ st.markdown(
             <p style="margin-bottom: 0; color: #dce5ff; font-weight: 600;">
                 Email <a href="mailto:kobescodes@gmail.com">kobescodes@gmail.com</a>
             </p>
+            <a class="coffee-btn" href="https://buymeacoffee.com/kobescodes" target="_blank" rel="noopener noreferrer">
+                Buy me a coffee if you like it!
+            </a>
             <p style="margin-top: 0.55rem; margin-bottom: 0; color: rgba(156, 167, 191, 0.16); font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase;">
                 kobescodes
             </p>
