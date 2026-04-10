@@ -6,6 +6,8 @@ Variable (SABV) policy.
 
 **[Try the live app →](https://data-analysis-sabv.streamlit.app/)**
 
+![Research Hub Screenshot](screenshot.png)
+
 ---
 
 ## The Problem
